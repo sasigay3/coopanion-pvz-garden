@@ -1,0 +1,61 @@
+{
+  "name": "cortico-world-pvz-garden",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Experimental Coopanion World for autonomous Plants vs. Zombies play on a verified Windows game build",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/sasigay3/coopanion-pvz-garden.git"
+  },
+  "homepage": "https://github.com/sasigay3/coopanion-pvz-garden#readme",
+  "bugs": {
+    "url": "https://github.com/sasigay3/coopanion-pvz-garden/issues"
+  },
+  "keywords": [
+    "cortico-world",
+    "cortico",
+    "pvz",
+    "plants-vs-zombies"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "os": [
+    "win32"
+  ],
+  "packageManager": "pnpm@11.5.0",
+  "main": "./src/index.ts",
+  "cortico": {
+    "kind": "world",
+    "api": 6,
+    "webUiClient": "dist/webui.js",
+    "describe": "describe.json"
+  },
+  "files": [
+    "src",
+    "dist",
+    "scripts",
+    "cursor-companion",
+    "describe.json",
+    "CHANGELOG.md",
+    "README.md",
+    "LICENSE",
+    "THIRD_PARTY_NOTICES.md"
+  ],
+  "scripts": {
+    "build": "node scripts/build-webui.mjs",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "generate:cursor": "node cursor-companion/scripts/generate.mjs",
+    "check:cursor": "node cursor-companion/scripts/generate.mjs --check"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "cortico": "^0.2.0",
+    "esbuild": "^0.28.2",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  }
+}

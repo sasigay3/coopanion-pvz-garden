@@ -74,4 +74,3 @@ The targeted tests cover parts of the safety guards and pickup logic, not every 
 ## Credits and license
 
 This project derives from [Phantivia/cortico-world-pvz](https://github.com/Phantivia/cortico-world-pvz), copyright © 2026 Phantivia, under the MIT License. The original copyright and license notice is preserved in [LICENSE](LICENSE). Repository owner and project direction: [sasigay3](https://github.com/sasigay3); adaptation, implementation and documentation developed collaboratively with **OpenAI Codex**. See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
-
