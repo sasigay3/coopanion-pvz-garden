@@ -58,6 +58,59 @@ The extension checks the hashes and native signatures before enabling game actio
 
 The project uses game memory and DLL injection rather than screen OCR. Neither an injected process nor the game's internal structures are a stable public API; changes to the game or host can break compatibility.
 
+## Architecture and implementation
+
+The project separates **observation and execution**, which must be deterministic, from **strategy**, which is chosen by the model. A typical decision cycle looks like this:
+
+```text
+Verified game process
+   ↕ game state and internal input
+Native DLL ↔ named pipe ↔ TypeScript World and task executor
+                                  ↕ snapshots, events and tools
+                         Coopanion + model provider
+```
+
+1. **Start and verify.** The World checks the executable and `main.pak`, builds the native bridge if needed, and starts the verified game through its injector. The native side also checks the process identity and relevant signatures before accepting input. The local profile contains build-specific addresses and layouts, which is why a different executable with the same version label is insufficient.
+2. **Observe.** The injected DLL reads the game objects and sends structured snapshots over a named pipe. The World turns them into human-readable board and menu information, including cells, seed packets, sun, visible zombies, collectibles and progress. Visibility restrictions matter: the model is not promised information hidden by fog, darkness or unopened vases.
+3. **Decide.** Coopanion provides the state, events, tool definitions and the game-specific instructions in [`src/ENV_PROMPT.md`](src/ENV_PROMPT.md) to the model. The model plans and requests actions. The prompt is strategy guidance, not a hard-coded solver, so different models and runs can make different choices.
+4. **Execute and check.** The World validates requests, submits ordered tasks and sends native actions to the bridge. Input is directed to the game rather than moving the Windows system mouse. Receipts and later state distinguish a request being accepted from an action actually succeeding. The model can use the result to revise its next plan.
+
+### Gameplay features
+
+| Feature | Implementation approach | Practical limits |
+| --- | --- | --- |
+| Menus and seed selection | Menu and seed-picker state are exposed as semantic choices. The model requests menu actions or selects, replaces and confirms seeds; the executor checks capacity and respects fixed selections. | A displayed or requested card still has to be unlocked and available. Automatic selection can fail or require a different plan. |
+| Planting and shoveling | The model chooses a plant and board position. The executor resolves the request against the current snapshot, while the native bridge checks and sends game input. Card cooldown, cost, tile and cursor state affect whether an action can succeed. | An earlier snapshot can become stale while zombies move. An accepted task is not proof of a successful placement. |
+| Ordered plans and reactions | `pvz_hd_do` submits steps as a queue; steps can wait for readiness and affordability or skip when conditions are unmet. `pvz_hd_arm` registers conditions evaluated against later snapshots and queues actions when they become true. | Waiting steps can delay later actions. Triggers depend on visible state and available cards; execution can still fail. |
+| Relative placement | For some actions the requested position can be resolved relative to a currently visible hostile zombie or an available flower pot at execution time. | Targets can disappear or have no legal tile; these actions may be skipped instead of guessing a position. |
+| Automatic pickups and rewards | The World schedules automatic sun collection alongside game actions. Coin and diamond pickups are batched separately on eligible ordinary Adventure and Survival boards; verified level rewards are handled when detected. | Pickup is best effort, competes for game input and is not guaranteed to catch every item. Transition and reward behavior still needs more real-game coverage. |
+| Optional assists | Independent controls enable a 1,000-sun floor or fast cooldown, add 200 sun once, or add a bonus after a verified automatic sun pickup. A separate Python helper checks the game identity, board, scene and relevant fields before writing process memory; bonuses are tied to the current mode and stage. | Disabled by default. Eligible Adventure and Survival combat boards only; paused, special or transitioning states can be rejected. A bonus may be skipped if the board cannot be safely confirmed. These controls are not an unlimited-compatibility cheat. |
+
+### How the strategy is guided
+
+Most tactical behavior is expressed as **instructions to the model** in [`src/ENV_PROMPT.md`](src/ENV_PROMPT.md), supplemented by programmatic checks in [`src/live-guards.ts`](src/live-guards.ts) and the executor. These are different kinds of safeguards: a prompt can influence a choice but cannot guarantee it, while a code check can reject or adjust particular actions.
+
+- **Night Adventure:** before starting a normal night Adventure level, code attempts to include Puff-shroom and Sun-shroom when they are unlocked and selection rules permit it. It preserves fixed cards and reports if the required selection cannot be completed. This requirement does not apply to Survival.
+- **Pool and fog:** the prompt asks the model to defend both water lanes and use Lily Pads where needed; daytime pool economy can start with Sunflowers in the first two water columns. Some pool selection and placement cases have additional checks. A Lily Pad alone is not treated as a complete defense.
+- **Survival repicks:** the model is instructed to reassess each stage using visible enemy previews, existing defenses, resources and unlocked cards. It may replace economy plants in later stages when production is already sufficient, and consider anti-balloon plants when appropriate. This is guidance, not a guarantee that every wave gets a different lineup or the ideal counter.
+- **Plant choice and upgrades:** after essential terrain and defense needs are met, the prompt favors usable higher-impact cards and asks the model to actually deploy them. Upgrade plants require their base plant, purchase/unlock and a legal position. Tall-nut is preferred over Wall-nut when available and appropriate; defensive placement is guided toward legal tiles farther from the house, subject to immediate threats.
+- **Graves and formation:** in night or fog, the model is encouraged to consider Grave Buster and remove visible graves when safe and legal. During stable Survival play it is also encouraged to fill useful gaps, while keeping space for necessary defenses and responding to immediate danger first.
+- **Special encounters:** prompts, state and actions include support for selected mechanics such as conveyor cards, Vasebreaker and the final boss. Their presence in the code does not mean every special mode or boss transition has passed end-to-end testing in this fork.
+
+The model cannot purchase, use or infer cards that the game has not actually made available. It can also misread a situation or choose a poor strategy; keep the game observable and intervene when necessary.
+
+### Source map
+
+| Path | Responsibility |
+| --- | --- |
+| [`src/fingerprint.ts`](src/fingerprint.ts), [`src/native/profile.h`](src/native/profile.h) | Verified installation profile and build-specific native definitions. |
+| [`src/native/`](src/native/) | x86 injector, in-process bridge, snapshot extraction and game input. |
+| [`src/bridge.ts`](src/bridge.ts), [`src/runtime.ts`](src/runtime.ts) | Process/pipe lifecycle and runtime communication. |
+| [`src/world.ts`](src/world.ts), [`src/executor.ts`](src/executor.ts), [`src/triggers.ts`](src/triggers.ts) | World integration, task execution, reactions and pickup scheduling. |
+| [`src/tools.ts`](src/tools.ts), [`src/ENV_PROMPT.md`](src/ENV_PROMPT.md) | Model-facing action schemas and gameplay instructions. |
+| [`src/live-guards.ts`](src/live-guards.ts), [`src/auto-pickups.mjs`](src/auto-pickups.mjs), [`src/sun-bonus.mjs`](src/sun-bonus.mjs) | Selected gameplay checks, pickup batching and verified bonus accounting. |
+| [`scripts/pvz_assist_probe.py`](scripts/pvz_assist_probe.py), [`src/webui/`](src/webui/) | Guarded optional memory assists and host controls. |
+
 ## Development and testing
 
 ```powershell
